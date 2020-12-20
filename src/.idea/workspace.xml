@@ -1,14 +1,21 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="ChangeListManager">
-    <list default="true" id="c94fefb7-7cbc-40cc-b83f-c1db7d9ce4ce" name="Default Changelist" comment="" />
+    <list default="true" id="c94fefb7-7cbc-40cc-b83f-c1db7d9ce4ce" name="Default Changelist" comment="">
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/raft/raft.go" beforeDir="false" afterPath="$PROJECT_DIR$/raft/raft.go" afterDir="false" />
+    </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
     <option name="LAST_RESOLUTION" value="IGNORE" />
   </component>
   <component name="GOROOT" url="file:///usr/local/go" />
+  <component name="Git.Settings">
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$/.." />
+  </component>
   <component name="ProjectId" id="1lkBR2ieXciglAi5YdzDCMiW64m" />
+  <component name="ProjectLevelVcsManager" settingsEditedManually="true" />
   <component name="ProjectViewState">
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
@@ -56,8 +63,8 @@
     <recent_temporary>
       <list>
         <item itemvalue="Go Test.TestReElection in raft" />
-        <item itemvalue="Go Test.TestInitialElection in raft" />
         <item itemvalue="Go Test.test_test.go" />
+        <item itemvalue="Go Test.TestInitialElection in raft" />
       </list>
     </recent_temporary>
   </component>

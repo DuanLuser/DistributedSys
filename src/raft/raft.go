@@ -131,11 +131,13 @@ type RequestVoteReply struct {
 }
 
 type AppendEntriesArgs struct {
+	//
 	Term			int
 	LeaderId		int
 }
 
 type AppendEntriesReply struct {
+	//
 	Term			int
 	HeartbeatRep	bool
 }
@@ -153,7 +155,6 @@ func (rf *Raft) RequestVote(args RequestVoteArgs, reply *RequestVoteReply) {
 		rf.votedFor = args.CandidateId
 		rf.currentTerm = args.Term
 		rf.priorHeartbeat=time.Now().UnixNano() / 1e6
-		//fmt.Println("RequesVote, server:",rf.me,"heartbeat:",rf.priorHeartbeat)
 		reply.Term = args.Term
 		reply.VoteGranted = true
 	}
@@ -161,7 +162,6 @@ func (rf *Raft) RequestVote(args RequestVoteArgs, reply *RequestVoteReply) {
 		reply.VoteGranted = false
 		reply.Term = rf.currentTerm
 	}
-
 }
 
 //
@@ -228,7 +228,7 @@ func (rf *Raft) initialize() {
 	rf.currentTerm = 0
 	rf.votedFor = -1
 	rand.Seed(time.Now().UnixNano())
-	rf.electionTimeout=rand.Intn(300)+150   //150~300
+	rf.electionTimeout=rand.Intn(300)+150   //300~450
 	rf.priorHeartbeat = time.Now().UnixNano() / 1e6
 	rf.receivedVotes = 0
 	//fmt.Println("initialize server:",rf.me, "timeout:",rf.electionTimeout)
@@ -240,11 +240,11 @@ func (rf *Raft) checkElectionTimeout() {
 		_, isleader := rf.GetState()
 		if !isleader && (nowTime-rf.priorHeartbeat)>int64(rf.electionTimeout) {
 			rf.mu.Lock()
-			//fmt.Println("server:",rf.me,isleader,nowTime - rf.priorHeartbeat, rf.electionTimeout, nowTime, rf.priorHeartbeat)
 			//this node becomes a candidate
+			//fmt.Println("server:",rf.me,isleader,nowTime - rf.priorHeartbeat, rf.electionTimeout, nowTime, rf.priorHeartbeat)
 			rf.currentTerm += 1
 			rf.votedFor = rf.me
-			rf.receivedVotes = 1   //
+			rf.receivedVotes = 1   // vote for itself
 			msg := RequestVoteArgs{rf.currentTerm, rf.me}
 			for server := 0; server < len(rf.peers); server++ {
 				if server != rf.me {
@@ -263,8 +263,8 @@ func (rf *Raft) checkElectionTimeout() {
 			}
 			//fmt.Println("allsent server:", rf.me, "currentTerm:", rf.currentTerm, "receivedVotes:", rf.receivedVotes, "timeout:", rf.electionTimeout)
 			rf.mu.Unlock()
-			time.Sleep(10*time.Millisecond)
 		}
+		time.Sleep(10*time.Millisecond)
 	}
 }
 
@@ -305,9 +305,7 @@ func (rf *Raft) HeartbeatHandle(args AppendEntriesArgs, reply *AppendEntriesRepl
 		rf.priorHeartbeat=time.Now().UnixNano() / 1e6
 		reply.Term = args.Term
 		reply.HeartbeatRep = true
-		//fmt.Println(rf.me, rf.votedFor)
 	}
-
 }
 
 //
