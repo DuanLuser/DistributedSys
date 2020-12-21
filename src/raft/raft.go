@@ -27,7 +27,18 @@ import "labrpc"
 // import "bytes"
 // import "encoding/gob"
 
+// definition of various time
+const (
+	HeartbeatTime = 20*time.Millisecond
+	CheckElectionOutTime = 20*time.Millisecond
+)
 
+// definition of node state
+const (
+	Leader = 1
+	Candidate = 0
+	Follower = -1
+)
 
 //
 // as each Raft peer becomes aware that successive log entries are
@@ -60,8 +71,9 @@ type Raft struct {
 	electionTimeout	int
 
 	//
-	receivedVotes	int
-	priorHeartbeat	int64
+	receivedVotes	int		// number of votes received
+	nodeState		int		// determine the identity of the node
+	priorHeartbeat	int64	//
 }
 
 // return currentTerm and whether this server
@@ -75,7 +87,7 @@ func (rf *Raft) GetState() (int, bool) {
 	defer rf.mu.Unlock()
 	term = rf.currentTerm
 	isleader = false
-	if rf.votedFor == rf.me && rf.receivedVotes>len(rf.peers)/2 {
+	if rf.nodeState==Leader {
 		isleader = true
 	}
 	return term, isleader
@@ -142,17 +154,34 @@ type AppendEntriesReply struct {
 	HeartbeatRep	bool
 }
 
+func (rf *Raft) HandleRequestVoteReply(reply *RequestVoteReply) {
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+	if reply.Term == rf.currentTerm && reply.VoteGranted {
+		rf.receivedVotes += 1
+		if rf.votedFor == rf.me && rf.receivedVotes>len(rf.peers)/2 { //rf.nodeState = Candidate
+			rf.nodeState=Leader
+		}
+	}
+
+	if reply.Term > rf.currentTerm{
+		rf.currentTerm=reply.Term
+		rf.votedFor=-1
+		rf.nodeState=Follower
+		rf.priorHeartbeat=time.Now().UnixNano() / 1e6
+	}
+}
 
 //
 // example RequestVote RPC handler.
-//
+// lab1
 func (rf *Raft) RequestVote(args RequestVoteArgs, reply *RequestVoteReply) {
 	// Your code here.
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 	//fmt.Println("RequesVote,server:",rf.me)
 	if rf.currentTerm < args.Term {
-		rf.votedFor = args.CandidateId
+		rf.votedFor = args.CandidateId //
 		rf.currentTerm = args.Term
 		rf.priorHeartbeat=time.Now().UnixNano() / 1e6
 		reply.Term = args.Term
@@ -161,6 +190,38 @@ func (rf *Raft) RequestVote(args RequestVoteArgs, reply *RequestVoteReply) {
 	if rf.currentTerm > args.Term {
 		reply.VoteGranted = false
 		reply.Term = rf.currentTerm
+	}
+}
+
+// lab1
+func (rf *Raft) checkElectionTimeout() {
+	for  {
+		nowTime := time.Now().UnixNano()/1e6
+		if rf.nodeState!=Leader && (nowTime-rf.priorHeartbeat)>int64(rf.electionTimeout) {
+			rf.mu.Lock()
+			//this node becomes a candidate
+			//fmt.Println("server:",rf.me,rf.nodeState,nowTime - rf.priorHeartbeat, rf.electionTimeout, nowTime, rf.priorHeartbeat)
+			rf.nodeState=Candidate
+			rf.currentTerm += 1
+			rf.votedFor = rf.me
+			rf.receivedVotes = 1   // vote for itself
+			msg := RequestVoteArgs{rf.currentTerm, rf.me}
+			for server := 0; server < len(rf.peers); server++ {
+				if server != rf.me {
+					go func(server int) {	//并发执行，不阻塞
+						rmsg := new(RequestVoteReply)
+						ok := rf.sendRequestVote(server, msg, rmsg)
+						if ok {
+							rf.HandleRequestVoteReply(rmsg)
+						}
+						return
+					}(server)
+				}
+			}
+			//fmt.Println("allsent server:", rf.me, "currentTerm:", rf.currentTerm, "receivedVotes:", rf.receivedVotes, "timeout:", rf.electionTimeout)
+			rf.mu.Unlock()
+		}
+		time.Sleep(CheckElectionOutTime)
 	}
 }
 
@@ -186,9 +247,52 @@ func (rf *Raft) sendRequestVote(server int, args RequestVoteArgs, reply *Request
 	return ok
 }
 
+// lab1
 func (rf *Raft) sendAppendEntries(server int, args AppendEntriesArgs, reply *AppendEntriesReply) bool {
 	ok := rf.peers[server].Call("Raft.HeartbeatHandle", args, reply)
 	return ok
+}
+
+// lab1
+func (rf *Raft) LeaderHeartbeat() {
+	for {
+		//fmt.Println("LeaderHeartbeat:", rf.me, rf.currentTerm, isleader, rf.receivedVotes)
+		if rf.nodeState==Leader {
+			rf.mu.Lock()
+			msg := AppendEntriesArgs{rf.currentTerm, rf.me}
+			for server := 0; server < len(rf.peers); server++ {
+				if server != rf.me {
+					go func (server int) { //并发执行，不阻塞
+						rmsg := new(AppendEntriesReply)
+						if rf.sendAppendEntries(server, msg, rmsg) {
+							if rmsg.HeartbeatRep {
+								//fmt.Println("server:", server, "replay:", rmsg.HeartbeatRep)
+							}
+						}
+						return
+					}(server)
+				}
+			}
+			rf.mu.Unlock()
+		}
+		time.Sleep(HeartbeatTime)
+	}
+}
+
+// lab1
+func (rf *Raft) HeartbeatHandle(args AppendEntriesArgs, reply *AppendEntriesReply) {
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+	//fmt.Println("me:",rf.me,"currentterm:", rf.currentTerm, "args.term:",args.Term, args.LeaderId, rf.votedFor)
+	if rf.currentTerm <= args.Term  {
+		rf.currentTerm = args.Term
+		rf.votedFor = -1
+		rf.receivedVotes = 0
+		rf.nodeState = Follower
+		rf.priorHeartbeat=time.Now().UnixNano() / 1e6
+		reply.Term = args.Term
+		reply.HeartbeatRep = true
+	}
 }
 
 //
@@ -223,6 +327,7 @@ func (rf *Raft) Kill() {
 	// Your code here, if desired.
 }
 
+// lab1
 func (rf *Raft) initialize() {
 
 	rf.currentTerm = 0
@@ -231,81 +336,8 @@ func (rf *Raft) initialize() {
 	rf.electionTimeout=rand.Intn(300)+150   //300~450
 	rf.priorHeartbeat = time.Now().UnixNano() / 1e6
 	rf.receivedVotes = 0
+	rf.nodeState = Follower
 	//fmt.Println("initialize server:",rf.me, "timeout:",rf.electionTimeout)
-}
-
-func (rf *Raft) checkElectionTimeout() {
-	for  {
-		nowTime := time.Now().UnixNano()/1e6
-		_, isleader := rf.GetState()
-		if !isleader && (nowTime-rf.priorHeartbeat)>int64(rf.electionTimeout) {
-			rf.mu.Lock()
-			//this node becomes a candidate
-			//fmt.Println("server:",rf.me,isleader,nowTime - rf.priorHeartbeat, rf.electionTimeout, nowTime, rf.priorHeartbeat)
-			rf.currentTerm += 1
-			rf.votedFor = rf.me
-			rf.receivedVotes = 1   // vote for itself
-			msg := RequestVoteArgs{rf.currentTerm, rf.me}
-			for server := 0; server < len(rf.peers); server++ {
-				if server != rf.me {
-					go func(server int) {	//并发执行，不阻塞
-						rmsg := new(RequestVoteReply)
-						ok := rf.sendRequestVote(server, msg, rmsg)
-						//fmt.Println("checkTimeout aftersendvote:", server, " ", rf.me, ok)
-						if ok {
-							if rmsg.Term == rf.currentTerm && rmsg.VoteGranted {
-								rf.receivedVotes += 1
-							}
-						}
-						return
-					}(server)
-				}
-			}
-			//fmt.Println("allsent server:", rf.me, "currentTerm:", rf.currentTerm, "receivedVotes:", rf.receivedVotes, "timeout:", rf.electionTimeout)
-			rf.mu.Unlock()
-		}
-		time.Sleep(10*time.Millisecond)
-	}
-}
-
-func (rf *Raft) LeaderHeartbeat() {
-	for {
-		_, isleader := rf.GetState()
-		//fmt.Println("LeaderHeartbeat:", rf.me, rf.currentTerm, isleader, rf.receivedVotes)
-		if isleader {
-			rf.mu.Lock()
-			msg := AppendEntriesArgs{rf.currentTerm, rf.me}
-			for server := 0; server < len(rf.peers); server++ {
-				if server != rf.me {
-					go func (server int) { //并发执行，不阻塞
-						rmsg := new(AppendEntriesReply)
-						if rf.sendAppendEntries(server, msg, rmsg) {
-							if rmsg.HeartbeatRep {
-								//fmt.Println("server:", server, "replay:", rmsg.HeartbeatRep)
-							}
-						}
-						return
-					}(server)
-				}
-			}
-			rf.mu.Unlock()
-		}
-		time.Sleep(10*time.Millisecond)
-	}
-}
-
-func (rf *Raft) HeartbeatHandle(args AppendEntriesArgs, reply *AppendEntriesReply) {
-	rf.mu.Lock()
-	defer rf.mu.Unlock()
-	//fmt.Println("me:",rf.me,"currentterm:", rf.currentTerm, "args.term:",args.Term, args.LeaderId, rf.votedFor)
-	if rf.currentTerm <= args.Term  {
-		rf.currentTerm = args.Term
-		rf.votedFor = -1
-		rf.receivedVotes = 0
-		rf.priorHeartbeat=time.Now().UnixNano() / 1e6
-		reply.Term = args.Term
-		reply.HeartbeatRep = true
-	}
 }
 
 //
