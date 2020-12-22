@@ -18,6 +18,7 @@ package raft
 //
 
 import (
+	"fmt"
 	"math/rand"
 	"sync"
 	"time"
@@ -29,8 +30,8 @@ import "labrpc"
 
 // definition of various time
 const (
-	HeartbeatTime = 10*time.Millisecond
-	CheckETimeoutTime = 30*time.Millisecond
+	HeartbeatTime = 100*time.Millisecond
+	CheckETimeoutTime = 1*time.Millisecond
 )
 
 // definition of node state
@@ -170,6 +171,7 @@ type AppendEntriesArgs struct {
 	Term			int
 	LeaderId		int
 	// lab2
+	PrevLogIndex	int
 	PrevLogTerm		int
 	Entries 		[]LogEntry
 	LeaderCommit	int
@@ -182,19 +184,19 @@ type AppendEntriesReply struct {
 }
 
 // lab2
-func (rf *Raft) isLogEntriesUptodate (args RequestVoteArgs) bool{
+func (rf *Raft) isLogEntriesUp2date (args RequestVoteArgs) bool{
 
-	up_to_date := true									// initialized to true
+	up2date := true									// initialized to true
 	lastLogIndex := len(rf.logEntries)-1
 	if lastLogIndex >= 0 {
 		lastLogTerm := rf.logEntries[lastLogIndex].Term
 		if lastLogTerm > args.LastLogTerm ||
 			(lastLogTerm == args.LastLogTerm &&
 				lastLogIndex > args.LastLogIndex) {		// if log in args isn't more up-to-date
-			up_to_date = false
+			up2date = false
 		}
 	}
-	return up_to_date
+	return up2date
 }
 
 func (rf *Raft) getLogEntriesLastIndexTerm() (int, int) {
@@ -209,6 +211,17 @@ func (rf *Raft) getLogEntriesLastIndexTerm() (int, int) {
 	return lastLogIndex, lastLogTerm
 }
 
+func (rf *Raft) change2Candidate() {
+	//this node becomes a candidate
+	rand.Seed(time.Now().UnixNano())
+	rf.electionTimeout = rand.Intn(300)+150   // reset electionTimeout 300~450
+	// change to candidate state
+	rf.nodeState=Candidate
+	rf.votedFor = rf.me
+	rf.currentTerm += 1
+	rf.receivedVotes = 1   // vote for itself
+}
+
 //
 // example RequestVote RPC handler.
 // lab1
@@ -221,11 +234,11 @@ func (rf *Raft) RequestVote(args RequestVoteArgs, reply *RequestVoteReply) {
 	if rf.currentTerm < args.Term {
 		rf.votedFor = -1
 		rf.nodeState = Follower
+		rf.currentTerm = args.Term
 	}
 	// if votedFor is null or candidateId
-	if rf.currentTerm <= args.Term && (rf.votedFor == -1 || rf.votedFor == args.CandidateId){
-		rf.currentTerm = args.Term
-		if rf.isLogEntriesUptodate(args) {		// candidate’s log is at least as up-to-date as receiver’s log
+	if rf.currentTerm == args.Term && (rf.votedFor == -1 || rf.votedFor == args.CandidateId){
+		if rf.isLogEntriesUp2date(args) {		// candidate’s log is at least as up-to-date as receiver’s log
 			rf.nodeState = Follower
 			rf.votedFor = args.CandidateId
 			rf.priorHeartbeat = time.Now().UnixNano() / 1e6
@@ -247,14 +260,13 @@ func (rf *Raft) checkElectionTimeout() {
 		nowTime := time.Now().UnixNano()/1e6
 		if rf.nodeState!=Leader && (nowTime-rf.priorHeartbeat)>int64(rf.electionTimeout) {
 			rf.mu.Lock()
-			//fmt.Println("server:",rf.me,rf.nodeState,nowTime - rf.priorHeartbeat, rf.electionTimeout, nowTime, rf.priorHeartbeat)
+			//fmt.Println("server:",rf.me,rf.nodeState,nowTime - rf.priorHeartbeat,
+			//rf.electionTimeout, nowTime, rf.priorHeartbeat)
 			//this node becomes a candidate
-			rf.nodeState=Candidate
-			rf.votedFor = rf.me
-			rf.currentTerm += 1
-			rf.receivedVotes = 1   // vote for itself
+			rf.change2Candidate()
 			lastLogIndex, lastLogTerm := rf.getLogEntriesLastIndexTerm()
-			msg := RequestVoteArgs{rf.currentTerm, rf.me, lastLogIndex,lastLogTerm} //
+			msg := RequestVoteArgs{rf.currentTerm, rf.me,
+				lastLogIndex,lastLogTerm} //
 			for server := 0; server < len(rf.peers); server++ {
 				if server != rf.me {
 					go func(server int) {	//并发执行，不阻塞
@@ -328,22 +340,67 @@ func (rf *Raft) sendAppendEntries(server int, args AppendEntriesArgs, reply *App
 	return ok
 }
 
+
 // lab1
+// lab2
 func (rf *Raft) AppendEntries(args AppendEntriesArgs, reply *AppendEntriesReply) {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
-	//fmt.Println("me:",rf.me,"currentterm:", rf.currentTerm, "args.term:",args.Term, args.LeaderId, rf.votedFor)
+	//fmt.Println("me:",rf.me,"currentterm:", rf.currentTerm,
+	//"args.term:",args.Term, args.LeaderId, rf.votedFor)
 	if rf.currentTerm <= args.Term  {
 		rf.currentTerm = args.Term
 		rf.votedFor = -1
 		rf.receivedVotes = 0
 		rf.nodeState = Follower
-		rf.priorHeartbeat = time.Now().UnixNano() / 1e6
 		reply.Term = args.Term
-		reply.HeartbeatRep = true
+		// check for consistency
+		index := args.PrevLogIndex
+		fmt.Println(index)
+		if index >= 0 &&(len(rf.logEntries)-1 < index || rf.logEntries[index].Term != args.PrevLogTerm) {
+				reply.HeartbeatRep = false
+		} else {						// consistent
+			rf.logEntries = append(rf.logEntries, args.Entries...)
+			if args.LeaderCommit > rf.commitIndex {
+				rf.commitIndex = args.LeaderCommit
+				if rf.commitIndex > len(rf.logEntries)-1 {
+					rf.commitIndex = len(rf.logEntries)-1
+				}
+				// commit
+				for item:=rf.lastApplied; item<=rf.commitIndex;item++ {
+					rf.applyMsgCh <- ApplyMsg{Index:item, Command: rf.logEntries[item].Command}
+				}
+				rf.lastApplied = rf.commitIndex+1
+			}
+			reply.HeartbeatRep = true
+			rf.priorHeartbeat = time.Now().UnixNano() / 1e6
+		}
 	} else {
 		reply.Term = rf.currentTerm
 		reply.HeartbeatRep = false
+	}
+}
+
+func (rf *Raft) sendAppendEntries2Server(server int) {
+	if server < 0 {
+		return
+	}
+	prevLogTerm := 0
+	var entries []LogEntry
+
+	prevLogIndex := rf.nextIndex[server]-1
+	if len(rf.logEntries) > 0  && prevLogIndex >= 0 {
+		prevLogTerm = rf.logEntries[prevLogIndex].Term
+	}
+	if prevLogIndex+1 < len(rf.logEntries) {
+		entries = rf.logEntries[prevLogIndex+1:len(rf.logEntries)-1]
+	}
+	msg := AppendEntriesArgs{rf.currentTerm, rf.me, prevLogIndex,
+		prevLogTerm,entries, rf.commitIndex}
+	rmsg := new(AppendEntriesReply)
+	ok := rf.sendAppendEntries(server, msg, rmsg)
+	if ok {
+		rf.HandleAppendEntriesReply(server, rmsg)
 	}
 }
 
@@ -351,20 +408,13 @@ func (rf *Raft) AppendEntries(args AppendEntriesArgs, reply *AppendEntriesReply)
 // lab2: complete AppendEntries
 func (rf *Raft) LeaderHeartbeatAppendEntries() {
 	for {
-		//fmt.Println("LeaderHeartbeat:", rf.me, rf.currentTerm, isleader, rf.receivedVotes)
+		//fmt.Println("LeaderHeartbeat:", rf.me,
+		//rf.currentTerm, isleader, rf.receivedVotes)
 		if rf.nodeState == Leader {
 			rf.mu.Lock()
-			msg := AppendEntriesArgs{rf.currentTerm, rf.me, 0, nil,0}
 			for server := 0; server < len(rf.peers); server++ {
 				if server != rf.me {
-					go func (server int) { //并发执行，不阻塞
-						rmsg := new(AppendEntriesReply)
-						ok := rf.sendAppendEntries(server, msg, rmsg)
-						if ok {
-							//fmt.Println("server:", server, "replay:", rmsg.HeartbeatRep)
-						}
-						return
-					}(server)
+					go rf.sendAppendEntries2Server(server)
 				}
 			}
 			rf.mu.Unlock()
@@ -374,7 +424,7 @@ func (rf *Raft) LeaderHeartbeatAppendEntries() {
 }
 
 // lab2
-func (rf *Raft) HandleAppendEntriesReply(reply *AppendEntriesArgs) {
+func (rf *Raft) HandleAppendEntriesReply(server int, reply *AppendEntriesReply) {
 
 }
 
