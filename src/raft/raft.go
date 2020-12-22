@@ -29,8 +29,8 @@ import "labrpc"
 
 // definition of various time
 const (
-	HeartbeatTime = 30*time.Millisecond
-	CheckETimeoutTime = 50*time.Millisecond
+	HeartbeatTime = 10*time.Millisecond
+	CheckETimeoutTime = 30*time.Millisecond
 )
 
 // definition of node state
@@ -181,6 +181,34 @@ type AppendEntriesReply struct {
 	HeartbeatRep	bool	// named Success in lab2
 }
 
+// lab2
+func (rf *Raft) isLogEntriesUptodate (args RequestVoteArgs) bool{
+
+	up_to_date := true									// initialized to true
+	lastLogIndex := len(rf.logEntries)-1
+	if lastLogIndex >= 0 {
+		lastLogTerm := rf.logEntries[lastLogIndex].Term
+		if lastLogTerm > args.LastLogTerm ||
+			(lastLogTerm == args.LastLogTerm &&
+				lastLogIndex > args.LastLogIndex) {		// if log in args isn't more up-to-date
+			up_to_date = false
+		}
+	}
+	return up_to_date
+}
+
+func (rf *Raft) getLogEntriesLastIndexTerm() (int, int) {
+	lastLogIndex := -1
+	lastLogTerm := 0
+	if len(rf.logEntries) > 0 {
+		lastLogIndex = len(rf.logEntries)-1
+	}
+	if lastLogIndex >= 0 {
+		lastLogTerm = rf.logEntries[lastLogIndex].Term
+	}
+	return lastLogIndex, lastLogTerm
+}
+
 //
 // example RequestVote RPC handler.
 // lab1
@@ -188,15 +216,26 @@ func (rf *Raft) RequestVote(args RequestVoteArgs, reply *RequestVoteReply) {
 	// Your code here.
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
-	//fmt.Println("RequesVote,server:",rf.me)
+	//fmt.Println("RequesVote,server:",rf.me, rf.currentTerm, "args.candidatdid, term:",args.CandidateId,args.Term)
+	// reset node to Follower
 	if rf.currentTerm < args.Term {
-		rf.votedFor = args.CandidateId //
-		rf.currentTerm = args.Term
-		rf.priorHeartbeat=time.Now().UnixNano() / 1e6
-		reply.Term = args.Term
-		reply.VoteGranted = true
+		rf.votedFor = -1
+		rf.nodeState = Follower
 	}
-	if rf.currentTerm > args.Term {
+	// if votedFor is null or candidateId
+	if rf.currentTerm <= args.Term && (rf.votedFor == -1 || rf.votedFor == args.CandidateId){
+		rf.currentTerm = args.Term
+		if rf.isLogEntriesUptodate(args) {		// candidate’s log is at least as up-to-date as receiver’s log
+			rf.nodeState = Follower
+			rf.votedFor = args.CandidateId
+			rf.priorHeartbeat = time.Now().UnixNano() / 1e6
+			reply.Term = args.Term
+			reply.VoteGranted = true
+		} else {
+			reply.VoteGranted = false
+		}
+
+	} else if rf.currentTerm > args.Term {
 		reply.VoteGranted = false
 		reply.Term = rf.currentTerm
 	}
@@ -208,13 +247,14 @@ func (rf *Raft) checkElectionTimeout() {
 		nowTime := time.Now().UnixNano()/1e6
 		if rf.nodeState!=Leader && (nowTime-rf.priorHeartbeat)>int64(rf.electionTimeout) {
 			rf.mu.Lock()
-			//this node becomes a candidate
 			//fmt.Println("server:",rf.me,rf.nodeState,nowTime - rf.priorHeartbeat, rf.electionTimeout, nowTime, rf.priorHeartbeat)
+			//this node becomes a candidate
 			rf.nodeState=Candidate
-			rf.currentTerm += 1
 			rf.votedFor = rf.me
+			rf.currentTerm += 1
 			rf.receivedVotes = 1   // vote for itself
-			msg := RequestVoteArgs{rf.currentTerm, rf.me, 0,0} //
+			lastLogIndex, lastLogTerm := rf.getLogEntriesLastIndexTerm()
+			msg := RequestVoteArgs{rf.currentTerm, rf.me, lastLogIndex,lastLogTerm} //
 			for server := 0; server < len(rf.peers); server++ {
 				if server != rf.me {
 					go func(server int) {	//并发执行，不阻塞
@@ -227,7 +267,6 @@ func (rf *Raft) checkElectionTimeout() {
 					}(server)
 				}
 			}
-			//fmt.Println("allsent server:", rf.me, "currentTerm:", rf.currentTerm, "receivedVotes:", rf.receivedVotes, "timeout:", rf.electionTimeout)
 			rf.mu.Unlock()
 		}
 		time.Sleep(CheckETimeoutTime)
@@ -238,18 +277,26 @@ func (rf *Raft) checkElectionTimeout() {
 func (rf *Raft) HandleRequestVoteReply(reply *RequestVoteReply) {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
-	if reply.Term == rf.currentTerm && reply.VoteGranted {
+	if rf.currentTerm == reply.Term && reply.VoteGranted {
 		rf.receivedVotes += 1
+		//fmt.Println("HandleRequestVoteReply:",rf.me,rf.receivedVotes)
 		if rf.votedFor == rf.me && rf.receivedVotes>len(rf.peers)/2 { //rf.nodeState = Candidate
-			rf.nodeState=Leader
+			rf.nodeState = Leader
+			for server := 0; server < len(rf.peers); server++ {		  //Reinitialized after election
+				if server != rf.me {
+					go func (server int) { //并发执行
+						rf.nextIndex[server] = len(rf.logEntries)
+						rf.matchIndex[server] = 0
+						return
+					}(server)
+				}
+			}
 		}
-	}
-
-	if reply.Term > rf.currentTerm{
-		rf.currentTerm=reply.Term
-		rf.votedFor=-1
-		rf.nodeState=Follower
-		rf.priorHeartbeat=time.Now().UnixNano() / 1e6
+	} else if rf.currentTerm < reply.Term {
+		rf.currentTerm = reply.Term
+		rf.votedFor = -1
+		rf.nodeState = Follower
+		rf.priorHeartbeat = time.Now().UnixNano() / 1e6
 	}
 }
 
@@ -291,9 +338,12 @@ func (rf *Raft) AppendEntries(args AppendEntriesArgs, reply *AppendEntriesReply)
 		rf.votedFor = -1
 		rf.receivedVotes = 0
 		rf.nodeState = Follower
-		rf.priorHeartbeat=time.Now().UnixNano() / 1e6
+		rf.priorHeartbeat = time.Now().UnixNano() / 1e6
 		reply.Term = args.Term
 		reply.HeartbeatRep = true
+	} else {
+		reply.Term = rf.currentTerm
+		reply.HeartbeatRep = false
 	}
 }
 
@@ -302,17 +352,16 @@ func (rf *Raft) AppendEntries(args AppendEntriesArgs, reply *AppendEntriesReply)
 func (rf *Raft) LeaderHeartbeatAppendEntries() {
 	for {
 		//fmt.Println("LeaderHeartbeat:", rf.me, rf.currentTerm, isleader, rf.receivedVotes)
-		if rf.nodeState==Leader {
+		if rf.nodeState == Leader {
 			rf.mu.Lock()
 			msg := AppendEntriesArgs{rf.currentTerm, rf.me, 0, nil,0}
 			for server := 0; server < len(rf.peers); server++ {
 				if server != rf.me {
 					go func (server int) { //并发执行，不阻塞
 						rmsg := new(AppendEntriesReply)
-						if rf.sendAppendEntries(server, msg, rmsg) {
-							if rmsg.HeartbeatRep {
-								//fmt.Println("server:", server, "replay:", rmsg.HeartbeatRep)
-							}
+						ok := rf.sendAppendEntries(server, msg, rmsg)
+						if ok {
+							//fmt.Println("server:", server, "replay:", rmsg.HeartbeatRep)
 						}
 						return
 					}(server)
@@ -346,8 +395,14 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	index := -1
 	term := -1
 	isLeader := true
-
-
+	if rf.nodeState == Leader {
+		log := LogEntry{Command: command, Term: rf.currentTerm}
+		rf.logEntries = append(rf.logEntries, log)
+		index = len(rf.logEntries)
+		term = rf.currentTerm
+	} else {
+		isLeader = false
+	}
 	return index, term, isLeader
 }
 
@@ -362,16 +417,23 @@ func (rf *Raft) Kill() {
 }
 
 // lab1
-func (rf *Raft) initialize() {
-
+func (rf *Raft) initialize(applyCh chan ApplyMsg) {
+	// lab1
 	rf.currentTerm = 0
 	rf.votedFor = -1
-	rand.Seed(time.Now().UnixNano())
-	rf.electionTimeout=rand.Intn(300)+150   //300~450
-	rf.priorHeartbeat = time.Now().UnixNano() / 1e6
 	rf.receivedVotes = 0
 	rf.nodeState = Follower
-	//fmt.Println("initialize server:",rf.me, "timeout:",rf.electionTimeout)
+	rand.Seed(time.Now().UnixNano())
+	rf.electionTimeout = rand.Intn(300)+150   //300~450
+	rf.priorHeartbeat = time.Now().UnixNano() / 1e6
+
+	// lab2
+	rf.applyMsgCh = applyCh
+	rf.commitIndex = 0
+	rf.lastApplied = 0
+	length := len(rf.peers)
+	rf.nextIndex = make([]int, length)
+	rf.matchIndex = make([]int, length)
 }
 
 //
@@ -393,7 +455,7 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.me = me
 
 	// Your initialization code here.
-	rf.initialize()
+	rf.initialize(applyCh)
 
 	// initialize from state persisted before a crash
 	rf.readPersist(persister.ReadRaftState())

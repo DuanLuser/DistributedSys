@@ -28,7 +28,18 @@
     <property name="go.sdk.automatically.set" value="true" />
     <property name="last_opened_file_path" value="$PROJECT_DIR$" />
   </component>
-  <component name="RunManager" selected="Go Test.test_test.go">
+  <component name="RunManager" selected="Go Test.TestBasicAgree in raft">
+    <configuration name="TestBasicAgree in raft" type="GoTestRunConfiguration" factoryName="Go Test" temporary="true" nameIsGenerated="true">
+      <module name="src" />
+      <working_directory value="$PROJECT_DIR$/raft" />
+      <framework value="gotest" />
+      <kind value="PACKAGE" />
+      <package value="raft" />
+      <directory value="$PROJECT_DIR$" />
+      <filePath value="$PROJECT_DIR$/raft/test_test.go" />
+      <pattern value="^\QTestBasicAgree\E$" />
+      <method v="2" />
+    </configuration>
     <configuration name="TestInitialElection in raft" type="GoTestRunConfiguration" factoryName="Go Test" temporary="true" nameIsGenerated="true">
       <module name="src" />
       <working_directory value="$PROJECT_DIR$/raft" />
@@ -62,9 +73,10 @@
     </configuration>
     <recent_temporary>
       <list>
-        <item itemvalue="Go Test.test_test.go" />
+        <item itemvalue="Go Test.TestBasicAgree in raft" />
         <item itemvalue="Go Test.TestReElection in raft" />
         <item itemvalue="Go Test.TestInitialElection in raft" />
+        <item itemvalue="Go Test.test_test.go" />
       </list>
     </recent_temporary>
   </component>
