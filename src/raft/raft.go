@@ -376,7 +376,7 @@ func (rf *Raft) AppendEntries(args AppendEntriesArgs, reply *AppendEntriesReply)
 		index := args.PrevLogIndex
 		if index >= 0 &&(len(rf.logEntries)-1 < index || rf.logEntries[index].Term != args.PrevLogTerm) { // inconsistent
 				reply.HeartbeatRep = false
-				reply.MatchIndex = index-1  //decrease 1 to match
+				reply.MatchIndex = index  	//return the args.PrevLogIndex
 		} else {							// consistent
 			if len(args.Entries) !=0 {
 				if index >= 0 {
@@ -411,7 +411,7 @@ func (rf *Raft) sendAppendEntries2Server(server int) {
 		if prevLogIndex == -1 {
 			prevLogTerm = -1
 			entries = rf.logEntries[:len(rf.logEntries)]
-		} else {
+		} else if prevLogIndex < len(rf.logEntries) {						// wrong when test TestBackup
 			//fmt.Println(len(rf.logEntries), prevLogIndex)
 			prevLogTerm = rf.logEntries[prevLogIndex].Term
 			entries = rf.logEntries[prevLogIndex+1 : len(rf.logEntries)]
@@ -475,9 +475,9 @@ func (rf *Raft) HandleAppendEntriesReply(server int, reply *AppendEntriesReply) 
 				rf.lastApplied = rf.commitIndex
 			}
 
-		} else {
+		} else { // decrease 1(not +1) to match;
 			//fmt.Println("failed", server)
-			rf.nextIndex[server] = reply.MatchIndex+1      // decrease 1 to match
+			rf.nextIndex[server] -= 1         			   // or: rf.nextIndex[server] = reply.index
 			go rf.sendAppendEntries2Server(server)		   // resend msg to the server
 		}
 	} else if rf.commitIndex < reply.Term {
