@@ -89,7 +89,6 @@ func TestBasicAgree(t *testing.T) {
 		if nd > 0 {
 			t.Fatalf("some have committed before Start()")
 		}
-
 		xindex := cfg.one(index*100, servers)
 		if xindex != index {
 			t.Fatalf("got index %v but expected %v", xindex, index)
@@ -110,6 +109,7 @@ func TestFailAgree(t *testing.T) {
 
 	// follower network failure
 	leader := cfg.checkOneLeader()
+	fmt.Println("------------------------- disconnect-----------",(leader + 1) % servers)
 	cfg.disconnect((leader + 1) % servers)
 
 	// agree despite one failed server?

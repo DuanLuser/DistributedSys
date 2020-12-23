@@ -2,7 +2,9 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="c94fefb7-7cbc-40cc-b83f-c1db7d9ce4ce" name="Default Changelist" comment="">
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/raft/raft.go" beforeDir="false" afterPath="$PROJECT_DIR$/raft/raft.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/raft/test_test.go" beforeDir="false" afterPath="$PROJECT_DIR$/raft/test_test.go" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -27,7 +29,7 @@
     <property name="go.sdk.automatically.set" value="true" />
     <property name="last_opened_file_path" value="$PROJECT_DIR$" />
   </component>
-  <component name="RunManager" selected="Go Test.TestBasicAgree in raft">
+  <component name="RunManager" selected="Go Test.test_test.go">
     <configuration name="TestBasicAgree in raft" type="GoTestRunConfiguration" factoryName="Go Test" temporary="true" nameIsGenerated="true">
       <module name="src" />
       <working_directory value="$PROJECT_DIR$/raft" />
@@ -37,6 +39,17 @@
       <directory value="$PROJECT_DIR$" />
       <filePath value="$PROJECT_DIR$/raft/test_test.go" />
       <pattern value="^\QTestBasicAgree\E$" />
+      <method v="2" />
+    </configuration>
+    <configuration name="TestFailAgree in raft" type="GoTestRunConfiguration" factoryName="Go Test" temporary="true" nameIsGenerated="true">
+      <module name="src" />
+      <working_directory value="$PROJECT_DIR$/raft" />
+      <framework value="gotest" />
+      <kind value="PACKAGE" />
+      <package value="raft" />
+      <directory value="$PROJECT_DIR$" />
+      <filePath value="$PROJECT_DIR$/raft/test_test.go" />
+      <pattern value="^\QTestFailAgree\E$" />
       <method v="2" />
     </configuration>
     <configuration name="TestInitialElection in raft" type="GoTestRunConfiguration" factoryName="Go Test" temporary="true" nameIsGenerated="true">
@@ -72,10 +85,11 @@
     </configuration>
     <recent_temporary>
       <list>
+        <item itemvalue="Go Test.test_test.go" />
+        <item itemvalue="Go Test.TestFailAgree in raft" />
         <item itemvalue="Go Test.TestBasicAgree in raft" />
         <item itemvalue="Go Test.TestReElection in raft" />
         <item itemvalue="Go Test.TestInitialElection in raft" />
-        <item itemvalue="Go Test.test_test.go" />
       </list>
     </recent_temporary>
   </component>

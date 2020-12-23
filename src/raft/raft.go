@@ -18,7 +18,6 @@ package raft
 //
 
 import (
-	"fmt"
 	"math/rand"
 	"sync"
 	"time"
@@ -32,6 +31,8 @@ import "labrpc"
 const (
 	HeartbeatTime = 100*time.Millisecond
 	CheckETimeoutTime = 1*time.Millisecond
+	AddRandomTime = 150
+	MinElectionoutTime = 300
 )
 
 // definition of node state
@@ -181,6 +182,8 @@ type AppendEntriesReply struct {
 	//lab1
 	Term			int
 	HeartbeatRep	bool	// named Success in lab2
+	//lab2
+	MatchIndex	int
 }
 
 // lab2
@@ -214,7 +217,7 @@ func (rf *Raft) getLogEntriesLastIndexTerm() (int, int) {
 func (rf *Raft) change2Candidate() {
 	//this node becomes a candidate
 	rand.Seed(time.Now().UnixNano())
-	rf.electionTimeout = rand.Intn(300)+150   // reset electionTimeout 300~450
+	rf.electionTimeout = rand.Intn(AddRandomTime)+MinElectionoutTime   // reset electionTimeout 300~450
 	// change to candidate state
 	rf.nodeState=Candidate
 	rf.votedFor = rf.me
@@ -255,6 +258,7 @@ func (rf *Raft) RequestVote(args RequestVoteArgs, reply *RequestVoteReply) {
 }
 
 // lab1
+// lab2
 func (rf *Raft) checkElectionTimeout() {
 	for  {
 		nowTime := time.Now().UnixNano()/1e6
@@ -340,6 +344,20 @@ func (rf *Raft) sendAppendEntries(server int, args AppendEntriesArgs, reply *App
 	return ok
 }
 
+func(rf *Raft) Compare2LeaderCommit(LeaderCommit int) {
+
+	if len(rf.logEntries)-1 >= LeaderCommit {
+		rf.commitIndex = LeaderCommit
+	} else {
+		rf.commitIndex = len(rf.logEntries)-1
+	}
+	//fmt.Println("before commit1 server:",rf.me, rf.lastApplied, rf.commitIndex)
+	for item := rf.lastApplied+1; item <= rf.commitIndex; item++ {
+		rf.applyMsgCh <- ApplyMsg{Index: item+1, Command: rf.logEntries[item].Command}
+		//fmt.Println("commit1 server:",rf.me, rf.logEntries[item].Command)
+	}
+	rf.lastApplied = rf.commitIndex
+}
 
 // lab1
 // lab2
@@ -356,21 +374,21 @@ func (rf *Raft) AppendEntries(args AppendEntriesArgs, reply *AppendEntriesReply)
 		reply.Term = args.Term
 		// check for consistency
 		index := args.PrevLogIndex
-		fmt.Println(index)
-		if index >= 0 &&(len(rf.logEntries)-1 < index || rf.logEntries[index].Term != args.PrevLogTerm) {
+		if index >= 0 &&(len(rf.logEntries)-1 < index || rf.logEntries[index].Term != args.PrevLogTerm) { // inconsistent
 				reply.HeartbeatRep = false
-		} else {						// consistent
-			rf.logEntries = append(rf.logEntries, args.Entries...)
-			if args.LeaderCommit > rf.commitIndex {
-				rf.commitIndex = args.LeaderCommit
-				if rf.commitIndex > len(rf.logEntries)-1 {
-					rf.commitIndex = len(rf.logEntries)-1
+				reply.MatchIndex = index-1  //decrease 1 to match
+		} else {							// consistent
+			if len(args.Entries) !=0 {
+				if index >= 0 {
+					rf.logEntries = rf.logEntries[:index+1]
 				}
-				// commit
-				for item:=rf.lastApplied; item<=rf.commitIndex;item++ {
-					rf.applyMsgCh <- ApplyMsg{Index:item, Command: rf.logEntries[item].Command}
-				}
-				rf.lastApplied = rf.commitIndex+1
+				rf.logEntries = append(rf.logEntries, args.Entries...)
+				reply.MatchIndex = len(rf.logEntries)-1
+				//fmt.Println("AppendEntries not nil server:", rf.me, rf.logEntries, rf.lastApplied,reply.MatchIndex)
+			} else {
+				rf.Compare2LeaderCommit(args.LeaderCommit)
+				reply.MatchIndex = index
+				//fmt.Println("AppendEntries nil server:", rf.me, rf.logEntries, rf.lastApplied,reply.MatchIndex)
 			}
 			reply.HeartbeatRep = true
 			rf.priorHeartbeat = time.Now().UnixNano() / 1e6
@@ -389,12 +407,17 @@ func (rf *Raft) sendAppendEntries2Server(server int) {
 	var entries []LogEntry
 
 	prevLogIndex := rf.nextIndex[server]-1
-	if len(rf.logEntries) > 0  && prevLogIndex >= 0 {
-		prevLogTerm = rf.logEntries[prevLogIndex].Term
+	if len(rf.logEntries) > 0 {
+		if prevLogIndex == -1 {
+			prevLogTerm = -1
+			entries = rf.logEntries[:len(rf.logEntries)]
+		} else {
+			//fmt.Println(len(rf.logEntries), prevLogIndex)
+			prevLogTerm = rf.logEntries[prevLogIndex].Term
+			entries = rf.logEntries[prevLogIndex+1 : len(rf.logEntries)]
+		}
 	}
-	if prevLogIndex+1 < len(rf.logEntries) {
-		entries = rf.logEntries[prevLogIndex+1:len(rf.logEntries)-1]
-	}
+	//fmt.Println("sendAppendEntries,", rf.me, "server", server, prevLogIndex, prevLogTerm, entries, rf.logEntries)
 	msg := AppendEntriesArgs{rf.currentTerm, rf.me, prevLogIndex,
 		prevLogTerm,entries, rf.commitIndex}
 	rmsg := new(AppendEntriesReply)
@@ -425,7 +448,45 @@ func (rf *Raft) LeaderHeartbeatAppendEntries() {
 
 // lab2
 func (rf *Raft) HandleAppendEntriesReply(server int, reply *AppendEntriesReply) {
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+	if rf.nodeState == Leader && rf.currentTerm ==reply.Term {
+		if reply.HeartbeatRep { //
+			rf.nextIndex[server] = reply.MatchIndex + 1
+			rf.matchIndex[server] = reply.MatchIndex
+			beqN := 0
+			N := reply.MatchIndex
+			for server_i :=0; server_i<len(rf.peers);server_i++ {
+				if server_i != rf.me {
+					if N >=0 && rf.matchIndex[server_i] >= N {
+						beqN += 1
+					}
+				}
+			}
+			// a majority of matchIndex[i]>=N (not including leader, so with "=")
+			if beqN >= len(rf.peers)/2 && rf.logEntries[N].Term == rf.currentTerm &&
+				rf.commitIndex < N {
+				rf.commitIndex = N
+				// leader commit
+				for item := rf.lastApplied+1; item <= rf.commitIndex; item++ {
+					rf.applyMsgCh <- ApplyMsg{Index: item+1, Command: rf.logEntries[item].Command}
+					//fmt.Println("commit server:",rf.me, rf.logEntries[item].Command)
+				}
+				rf.lastApplied = rf.commitIndex
+			}
 
+		} else {
+			//fmt.Println("failed", server)
+			rf.nextIndex[server] = reply.MatchIndex+1      // decrease 1 to match
+			go rf.sendAppendEntries2Server(server)		   // resend msg to the server
+		}
+	} else if rf.commitIndex < reply.Term {
+		rf.currentTerm = reply.Term
+		rf.votedFor = -1
+		rf.receivedVotes = 0
+		rf.nodeState = Follower
+		rf.priorHeartbeat = time.Now().UnixNano() / 1e6
+	}
 }
 
 //
@@ -450,6 +511,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 		rf.logEntries = append(rf.logEntries, log)
 		index = len(rf.logEntries)
 		term = rf.currentTerm
+		//fmt.Println("server:",rf.me,"entry:", rf.logEntries)
 	} else {
 		isLeader = false
 	}
@@ -474,13 +536,13 @@ func (rf *Raft) initialize(applyCh chan ApplyMsg) {
 	rf.receivedVotes = 0
 	rf.nodeState = Follower
 	rand.Seed(time.Now().UnixNano())
-	rf.electionTimeout = rand.Intn(300)+150   //300~450
+	rf.electionTimeout = rand.Intn(AddRandomTime)+MinElectionoutTime   //300~450
 	rf.priorHeartbeat = time.Now().UnixNano() / 1e6
 
 	// lab2
 	rf.applyMsgCh = applyCh
-	rf.commitIndex = 0
-	rf.lastApplied = 0
+	rf.commitIndex = -1
+	rf.lastApplied = -1
 	length := len(rf.peers)
 	rf.nextIndex = make([]int, length)
 	rf.matchIndex = make([]int, length)
