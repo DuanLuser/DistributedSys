@@ -386,11 +386,11 @@ func (rf *Raft) AppendEntries(args AppendEntriesArgs, reply *AppendEntriesReply)
 				}
 				rf.logEntries = append(rf.logEntries, args.Entries...)
 				reply.MatchIndex = len(rf.logEntries)-1
-				//fmt.Println("AppendEntries not nil server:", rf.me, rf.logEntries, rf.lastApplied,reply.MatchIndex)
+				//fmt.Println("AppendEntries len!=0, server:", rf.me, rf.logEntries, rf.lastApplied,reply.MatchIndex)
 			} else {
 				rf.Compare2LeaderCommit(args.LeaderCommit)
 				reply.MatchIndex = index
-				//fmt.Println("AppendEntries nil server:", rf.me, rf.logEntries, rf.lastApplied,reply.MatchIndex)
+				//fmt.Println("AppendEntries len=0, server:", rf.me, rf.logEntries, rf.lastApplied,reply.MatchIndex)
 			}
 			reply.HeartbeatRep = true
 			rf.priorHeartbeat = time.Now().UnixNano() / 1e6
