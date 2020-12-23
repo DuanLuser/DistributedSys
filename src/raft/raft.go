@@ -225,6 +225,12 @@ func (rf *Raft) change2Candidate() {
 	rf.receivedVotes = 1   // vote for itself
 }
 
+func (rf *Raft) change2Follower() {
+	rf.votedFor = -1
+	rf.receivedVotes = 0
+	rf.nodeState = Follower
+}
+
 //
 // example RequestVote RPC handler.
 // lab1
@@ -235,8 +241,7 @@ func (rf *Raft) RequestVote(args RequestVoteArgs, reply *RequestVoteReply) {
 	//fmt.Println("RequesVote,server:",rf.me, rf.currentTerm, "args.candidatdid, term:",args.CandidateId,args.Term)
 	// reset node to Follower
 	if rf.currentTerm < args.Term {
-		rf.votedFor = -1
-		rf.nodeState = Follower
+		rf.change2Follower()
 		rf.currentTerm = args.Term
 	}
 	// if votedFor is null or candidateId
@@ -310,8 +315,7 @@ func (rf *Raft) HandleRequestVoteReply(reply *RequestVoteReply) {
 		}
 	} else if rf.currentTerm < reply.Term {
 		rf.currentTerm = reply.Term
-		rf.votedFor = -1
-		rf.nodeState = Follower
+		rf.change2Follower()
 		rf.priorHeartbeat = time.Now().UnixNano() / 1e6
 	}
 }
@@ -368,9 +372,7 @@ func (rf *Raft) AppendEntries(args AppendEntriesArgs, reply *AppendEntriesReply)
 	//"args.term:",args.Term, args.LeaderId, rf.votedFor)
 	if rf.currentTerm <= args.Term  {
 		rf.currentTerm = args.Term
-		rf.votedFor = -1
-		rf.receivedVotes = 0
-		rf.nodeState = Follower
+		rf.change2Follower()
 		reply.Term = args.Term
 		// check for consistency
 		index := args.PrevLogIndex
@@ -482,9 +484,7 @@ func (rf *Raft) HandleAppendEntriesReply(server int, reply *AppendEntriesReply) 
 		}
 	} else if rf.commitIndex < reply.Term {
 		rf.currentTerm = reply.Term
-		rf.votedFor = -1
-		rf.receivedVotes = 0
-		rf.nodeState = Follower
+		rf.change2Follower()
 		rf.priorHeartbeat = time.Now().UnixNano() / 1e6
 	}
 }
@@ -532,9 +532,7 @@ func (rf *Raft) Kill() {
 func (rf *Raft) initialize(applyCh chan ApplyMsg) {
 	// lab1
 	rf.currentTerm = 0
-	rf.votedFor = -1
-	rf.receivedVotes = 0
-	rf.nodeState = Follower
+	rf.change2Follower()
 	rand.Seed(time.Now().UnixNano())
 	rf.electionTimeout = rand.Intn(AddRandomTime)+MinElectionoutTime   //300~450
 	rf.priorHeartbeat = time.Now().UnixNano() / 1e6
