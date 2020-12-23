@@ -541,11 +541,13 @@ func (rf *Raft) initialize(applyCh chan ApplyMsg) {
 
 	// lab2
 	rf.applyMsgCh = applyCh
-	rf.commitIndex = -1
-	rf.lastApplied = -1
+	// if there are consistent logEntries
+	rf.commitIndex = len(rf.logEntries)-1
+	rf.lastApplied = len(rf.logEntries)-1
 	length := len(rf.peers)
 	rf.nextIndex = make([]int, length)
 	rf.matchIndex = make([]int, length)
+	//fmt.Println(rf.commitIndex, rf.lastApplied)
 }
 
 //
@@ -568,7 +570,6 @@ func Make(peers []*labrpc.ClientEnd, me int,
 
 	// Your initialization code here.
 	rf.initialize(applyCh)
-
 	// initialize from state persisted before a crash
 	rf.readPersist(persister.ReadRaftState())
 	//
