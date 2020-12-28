@@ -18,6 +18,8 @@ package raft
 //
 
 import (
+	"bytes"
+	"encoding/gob"
 	"math/rand"
 	"sync"
 	"time"
@@ -115,14 +117,14 @@ func (rf *Raft) GetState() (int, bool) {
 func (rf *Raft) persist() {
 	// Your code here.
 	//the variables of persistent state on all servers
-	/*
+
 	 w := new(bytes.Buffer)
 	 e := gob.NewEncoder(w)
 	 e.Encode(rf.currentTerm)
 	 e.Encode(rf.votedFor)
 	 e.Encode(rf.logEntries)
 	 data := w.Bytes()
-	 rf.persister.SaveRaftState(data)*/
+	 rf.persister.SaveRaftState(data)
 }
 
 //
@@ -131,7 +133,7 @@ func (rf *Raft) persist() {
 func (rf *Raft) readPersist(data []byte) {
 	// Your code here.
 	// for safety: check the length of the array - data
-	/*
+
 	if data == nil || len(data) <=0 {
 		return
 	}
@@ -139,7 +141,7 @@ func (rf *Raft) readPersist(data []byte) {
 	d := gob.NewDecoder(r)
 	d.Decode(&rf.currentTerm)
 	d.Decode(&rf.votedFor)
-	d.Decode(&rf.logEntries)*/
+	d.Decode(&rf.logEntries)
 }
 
 
@@ -241,14 +243,15 @@ func (rf *Raft) RequestVote(args RequestVoteArgs, reply *RequestVoteReply) {
 	//fmt.Println("RequesVote,server:",rf.me, rf.currentTerm, "args.candidatdid, term:",args.CandidateId,args.Term)
 	// reset node to Follower
 	if rf.currentTerm < args.Term {
-		rf.change2Follower()
 		rf.currentTerm = args.Term
+		rf.change2Follower()
 	}
 	// if votedFor is null or candidateId
 	if rf.currentTerm == args.Term && (rf.votedFor == -1 || rf.votedFor == args.CandidateId){
 		if rf.isLogEntriesUp2date(args) {		// candidate’s log is at least as up-to-date as receiver’s log
 			rf.nodeState = Follower
 			rf.votedFor = args.CandidateId
+			rf.persist()
 			rf.priorHeartbeat = time.Now().UnixNano() / 1e6
 			reply.Term = args.Term
 			reply.VoteGranted = true
@@ -273,6 +276,7 @@ func (rf *Raft) checkElectionTimeout() {
 			//rf.electionTimeout, nowTime, rf.priorHeartbeat)
 			//this node becomes a candidate
 			rf.change2Candidate()
+			rf.persist()
 			lastLogIndex, lastLogTerm := rf.getLogEntriesLastIndexTerm()
 			msg := RequestVoteArgs{rf.currentTerm, rf.me,
 				lastLogIndex,lastLogTerm} //
@@ -317,6 +321,7 @@ func (rf *Raft) HandleRequestVoteReply(reply *RequestVoteReply) {
 		rf.currentTerm = reply.Term
 		rf.change2Follower()
 		rf.priorHeartbeat = time.Now().UnixNano() / 1e6
+		//rf.persist()
 	}
 }
 
@@ -378,7 +383,19 @@ func (rf *Raft) AppendEntries(args AppendEntriesArgs, reply *AppendEntriesReply)
 		index := args.PrevLogIndex
 		if index >= 0 &&(len(rf.logEntries)-1 < index || rf.logEntries[index].Term != args.PrevLogTerm) { // inconsistent
 				reply.HeartbeatRep = false
-				reply.MatchIndex = index  	//return the args.PrevLogIndex
+				//reply.MatchIndex = index-1  	//return the args.PrevLogIndex
+				if index > len(rf.logEntries)-1 {
+					index = len(rf.logEntries) - 1
+				}
+				reply.MatchIndex = index-1
+				for ; index >= 0 && len(rf.logEntries) > 0; index-- {
+					if rf.logEntries[index].Term == args.PrevLogTerm {
+						reply.MatchIndex = index
+						break
+					} /*else {
+						rf.logEntries = rf.logEntries[:index]
+					}*/
+				}
 		} else {							// consistent
 			if len(args.Entries) !=0 {
 				if index >= 0 {
@@ -399,6 +416,7 @@ func (rf *Raft) AppendEntries(args AppendEntriesArgs, reply *AppendEntriesReply)
 		reply.Term = rf.currentTerm
 		reply.HeartbeatRep = false
 	}
+	rf.persist()
 }
 
 func (rf *Raft) sendAppendEntries2Server(server int) {
@@ -410,7 +428,7 @@ func (rf *Raft) sendAppendEntries2Server(server int) {
 
 	prevLogIndex := rf.nextIndex[server]-1
 	if len(rf.logEntries) > 0 {
-		if prevLogIndex == -1 {
+		if prevLogIndex < 0 {
 			prevLogTerm = -1
 			entries = rf.logEntries[:len(rf.logEntries)]
 		} else if prevLogIndex < len(rf.logEntries) {						// wrong when test TestBackup
@@ -466,8 +484,8 @@ func (rf *Raft) HandleAppendEntriesReply(server int, reply *AppendEntriesReply) 
 				}
 			}
 			// a majority of matchIndex[i]>=N (not including leader, so with "=")
-			if beqN >= len(rf.peers)/2 && rf.logEntries[N].Term == rf.currentTerm &&
-				rf.commitIndex < N {
+			if beqN >= len(rf.peers)/2 && N<=len(rf.logEntries)-1 &&
+				rf.logEntries[N].Term == rf.currentTerm && rf.commitIndex < N {
 				rf.commitIndex = N
 				// leader commit
 				for item := rf.lastApplied+1; item <= rf.commitIndex; item++ {
@@ -476,17 +494,18 @@ func (rf *Raft) HandleAppendEntriesReply(server int, reply *AppendEntriesReply) 
 				}
 				rf.lastApplied = rf.commitIndex
 			}
-
 		} else { // decrease 1(not +1) to match;
 			//fmt.Println("failed", server)
-			rf.nextIndex[server] -= 1         			   // or: rf.nextIndex[server] = reply.index
+			rf.nextIndex[server] = reply.MatchIndex + 1
 			go rf.sendAppendEntries2Server(server)		   // resend msg to the server
 		}
 	} else if rf.commitIndex < reply.Term {
 		rf.currentTerm = reply.Term
 		rf.change2Follower()
 		rf.priorHeartbeat = time.Now().UnixNano() / 1e6
+		//rf.persist()
 	}
+	//
 }
 
 //
@@ -509,6 +528,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	if rf.nodeState == Leader {
 		log := LogEntry{Command: command, Term: rf.currentTerm}
 		rf.logEntries = append(rf.logEntries, log)
+		rf.persist()
 		index = len(rf.logEntries)
 		term = rf.currentTerm
 		//fmt.Println("server:",rf.me,"entry:", rf.logEntries)
@@ -571,6 +591,7 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	// initialize from state persisted before a crash
 	rf.readPersist(persister.ReadRaftState())
 	//
+	rf.persist()
 	go rf.checkElectionTimeout()
 	go rf.LeaderHeartbeatAppendEntries()
 

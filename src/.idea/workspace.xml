@@ -3,6 +3,7 @@
   <component name="ChangeListManager">
     <list default="true" id="c94fefb7-7cbc-40cc-b83f-c1db7d9ce4ce" name="Default Changelist" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/raft/raft.go" beforeDir="false" afterPath="$PROJECT_DIR$/raft/raft.go" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/raft/test_test.go" beforeDir="false" afterPath="$PROJECT_DIR$/raft/test_test.go" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
@@ -26,10 +27,10 @@
     <property name="WebServerToolWindowFactoryState" value="false" />
     <property name="go.import.settings.migrated" value="true" />
     <property name="go.sdk.automatically.set" value="true" />
-    <property name="last_opened_file_path" value="$PROJECT_DIR$" />
+    <property name="last_opened_file_path" value="$PROJECT_DIR$/raft/test_test.go" />
   </component>
-  <component name="RunManager" selected="Go Test.TestBackup in raft">
-    <configuration name="TestBackup in raft" type="GoTestRunConfiguration" factoryName="Go Test" temporary="true" nameIsGenerated="true">
+  <component name="RunManager" selected="Go Test.TestConcurrentStarts in raft">
+    <configuration name="TestConcurrentStarts in raft" type="GoTestRunConfiguration" factoryName="Go Test" temporary="true" nameIsGenerated="true">
       <module name="src" />
       <working_directory value="$PROJECT_DIR$/raft" />
       <framework value="gotest" />
@@ -37,10 +38,10 @@
       <package value="raft" />
       <directory value="$PROJECT_DIR$" />
       <filePath value="$PROJECT_DIR$/raft/test_test.go" />
-      <pattern value="^\QTestBackup\E$" />
+      <pattern value="^\QTestConcurrentStarts\E$" />
       <method v="2" />
     </configuration>
-    <configuration name="TestBasicAgree in raft" type="GoTestRunConfiguration" factoryName="Go Test" temporary="true" nameIsGenerated="true">
+    <configuration name="TestPersist1 in raft" type="GoTestRunConfiguration" factoryName="Go Test" temporary="true" nameIsGenerated="true">
       <module name="src" />
       <working_directory value="$PROJECT_DIR$/raft" />
       <framework value="gotest" />
@@ -48,10 +49,10 @@
       <package value="raft" />
       <directory value="$PROJECT_DIR$" />
       <filePath value="$PROJECT_DIR$/raft/test_test.go" />
-      <pattern value="^\QTestBasicAgree\E$" />
+      <pattern value="^\QTestPersist1\E$" />
       <method v="2" />
     </configuration>
-    <configuration name="TestFailAgree in raft" type="GoTestRunConfiguration" factoryName="Go Test" temporary="true" nameIsGenerated="true">
+    <configuration name="TestPersist2 in raft" type="GoTestRunConfiguration" factoryName="Go Test" temporary="true" nameIsGenerated="true">
       <module name="src" />
       <working_directory value="$PROJECT_DIR$/raft" />
       <framework value="gotest" />
@@ -59,10 +60,10 @@
       <package value="raft" />
       <directory value="$PROJECT_DIR$" />
       <filePath value="$PROJECT_DIR$/raft/test_test.go" />
-      <pattern value="^\QTestFailAgree\E$" />
+      <pattern value="^\QTestPersist2\E$" />
       <method v="2" />
     </configuration>
-    <configuration name="TestReElection in raft" type="GoTestRunConfiguration" factoryName="Go Test" temporary="true" nameIsGenerated="true">
+    <configuration name="TestPersist3 in raft" type="GoTestRunConfiguration" factoryName="Go Test" temporary="true" nameIsGenerated="true">
       <module name="src" />
       <working_directory value="$PROJECT_DIR$/raft" />
       <framework value="gotest" />
@@ -70,7 +71,7 @@
       <package value="raft" />
       <directory value="$PROJECT_DIR$" />
       <filePath value="$PROJECT_DIR$/raft/test_test.go" />
-      <pattern value="^\QTestReElection\E$" />
+      <pattern value="^\QTestPersist3\E$" />
       <method v="2" />
     </configuration>
     <configuration name="test_test.go" type="GoTestRunConfiguration" factoryName="Go Test" temporary="true" nameIsGenerated="true">
@@ -82,13 +83,20 @@
       <filePath value="$PROJECT_DIR$/raft/test_test.go" />
       <method v="2" />
     </configuration>
+    <list>
+      <item itemvalue="Go Test.TestPersist1 in raft" />
+      <item itemvalue="Go Test.TestPersist2 in raft" />
+      <item itemvalue="Go Test.test_test.go" />
+      <item itemvalue="Go Test.TestPersist3 in raft" />
+      <item itemvalue="Go Test.TestConcurrentStarts in raft" />
+    </list>
     <recent_temporary>
       <list>
-        <item itemvalue="Go Test.TestBackup in raft" />
+        <item itemvalue="Go Test.TestConcurrentStarts in raft" />
         <item itemvalue="Go Test.test_test.go" />
-        <item itemvalue="Go Test.TestFailAgree in raft" />
-        <item itemvalue="Go Test.TestBasicAgree in raft" />
-        <item itemvalue="Go Test.TestReElection in raft" />
+        <item itemvalue="Go Test.TestPersist2 in raft" />
+        <item itemvalue="Go Test.TestPersist3 in raft" />
+        <item itemvalue="Go Test.TestPersist1 in raft" />
       </list>
     </recent_temporary>
   </component>
